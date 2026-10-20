@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZeyStream V2 - P2P Video</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, sans-serif;
+            background: #0a0a0f;
+            color: #fff;
+            min-height: 100vh;
+        }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        h1 { color: #ff0088; margin-bottom: 20px; }
+        .card {
+            background: #1a1a2e;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+        input[type=text] {
+            width: 100%;
+            background: #0a0a0f;
+            border: 1px solid #333;
+            color: #fff;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        button {
+            background: #ff0088;
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        video { 
+            width: 100%; 
+            border-radius: 12px;
+            background: #000;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .stat {
+            background: #0a0a0f;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-value { font-size: 1.5em; color: #ff0088; }
+        .stat-label { font-size: 0.8em; color: #888; }
+        .cache-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .cache-item {
+            padding: 10px;
+            background: #0a0a0f;
+            margin: 5px 0;
+            border-radius: 8px;
+            font-size: 0.9em;
+            display: flex;
+            justify-content: space-between;
+        }
+        .badge {
+            background: #00ff88;
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 ZeyStream V2</h1>
+        
+        <div class="card">
+            <h3>Stream Video (P2P)</h3>
+            <input type="text" id="url" placeholder="Enter video URL..." 
+                   value="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4">
+            <button onclick="load()">▶ Load & Play</button>
+        </div>
+
+        <div class="card">
+            <video id="player" controls></video>
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-value" id="peers">0</div>
+                    <div class="stat-label">Peers</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" id="buffer">0%</div>
+                    <div class="stat-label">Buffer</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" id="cache">MISS</div>
+                    <div class="stat-label">Cache</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>📦 Cached Videos (Available for P2P)</h3>
+            <div class="cache-list" id="cacheList">
+                <p style="color:#888">No cached videos yet</p>
+            </div>
+            <button onclick="loadCacheList()" style="margin-top:10px">Refresh List</button>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('player');
+        
+        async function load() {
+            const url = document.getElementById('url').value;
+            if (!url) return;
+            
+            // Try to get from P2P cache first
+            const res = await fetch(`/api/video/stream?url=${encodeURIComponent(url)}`);
+            
+            if (res.status === 200) {
+                const blob = await res.blob();
+                video.src = URL.createObjectURL(blob);
+                document.getElementById('cache').textContent = 
+                    res.headers.get('X-Cache') || 'HIT';
+            } else {
+                // Direct load
+                video.src = `/api/video/stream?url=${encodeURIComponent(url)}`;
+            }
+            
+            video.play();
+        }
+        
+        async function loadCacheList() {
+            const res = await fetch('/api/video/list');
+            const data = await res.json();
+            
+            const list = document.getElementById('cacheList');
+            if (data.videos && data.videos.length > 0) {
+                list.innerHTML = data.videos.map(v => `
+                    <div class="cache-item">
+                        <span>${v.url.substring(0, 50)}...</span>
+                        <span class="badge">${v.chunks} chunks</span>
+                    </div>
+                `).join('');
+            } else {
+                list.innerHTML = '<p style="color:#888">No cached videos yet</p>';
+            }
+        }
+        
+        // Stats update
+        setInterval(async () => {
+            const res = await fetch('/api/status');
+            const data = await res.json();
+            document.getElementById('peers').textContent = data.peers;
+            
+            if (video.buffered.length && video.duration) {
+                const pct = (video.buffered.end(0) / video.duration * 100).toFixed(0);
+                document.getElementById('buffer').textContent = pct + '%';
+            }
+        }, 1000);
+        
+        // Init
+        loadCacheList();
+    </script>
+</body>
+</html>
